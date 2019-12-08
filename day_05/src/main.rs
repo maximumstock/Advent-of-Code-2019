@@ -7,8 +7,7 @@ fn main() {
 fn part1(input: Vec<&str>) -> usize {
     let orbits = parse_orbits(input);
     let graph = build_orbit_graph(orbits);
-    let n_total_orbits = count_total_orbits(graph);
-    n_total_orbits
+    count_total_orbits(graph)
 }
 
 struct Orbit {
@@ -21,10 +20,8 @@ type OrbitGraph = std::collections::HashMap::<String, Vec<String>>;
 fn count_total_orbits(graph: OrbitGraph) -> usize {
     let mut distances = std::collections::HashMap::<String, usize>::new();
     let mut parent_orbiters: Vec<String> = vec!["COM".to_string()];
-    let mut depth = 0 as usize;
 
     while let Some(parent) = parent_orbiters.pop() {
-        depth += 1;
         if let Some(orbiters) = graph.get(&parent) {
             for orbiter in orbiters {
                 let depth = distances.get(&parent).unwrap_or(&0);
@@ -70,7 +67,6 @@ fn build_orbit_graph(orbits: Vec<Orbit>) -> OrbitGraph {
 
     graph
 }
-
 
 fn input() -> Vec<&'static str> {
     let input = vec![
