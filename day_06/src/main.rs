@@ -1,13 +1,25 @@
+use std::collections::HashSet;
+
 fn main() {
     let input = input();
-    let n_total_orbits = part1(input);
+    let n_total_orbits = part1(&input);
     println!("Part 1 Total Orbits: {:?}", n_total_orbits);
+
+    let shortest_path_length = part2(&input);
+    println!("Part 2 Shortest Path: {:?}", shortest_path_length);
 }
 
-fn part1(input: Vec<&str>) -> usize {
+fn part1(input: &Vec<&str>) -> usize {
     let orbits = parse_orbits(input);
     let graph = build_orbit_graph(orbits);
-    count_total_orbits(graph)
+    count_total_orbits(&graph)
+}
+
+fn part2(input: &Vec<&str>) -> usize {
+    let orbits = parse_orbits(input);
+    let graph = build_orbit_graph(orbits);
+    let shortest_path = find_shortest_path_length(&graph, String::from("YOU"), String::from("SAN"));
+    shortest_path
 }
 
 struct Orbit {
@@ -17,24 +29,7 @@ struct Orbit {
 
 type OrbitGraph = std::collections::HashMap::<String, Vec<String>>;
 
-fn count_total_orbits(graph: OrbitGraph) -> usize {
-    let mut distances = std::collections::HashMap::<String, usize>::new();
-    let mut parent_orbiters: Vec<String> = vec!["COM".to_string()];
-
-    while let Some(parent) = parent_orbiters.pop() {
-        if let Some(orbiters) = graph.get(&parent) {
-            for orbiter in orbiters {
-                let depth = distances.get(&parent).unwrap_or(&0);
-                distances.insert(orbiter.clone(), *depth + 1);
-                parent_orbiters.push(orbiter.clone());
-            }
-        }
-    }
-
-    distances.values().sum()
-}
-
-fn parse_orbits(input: Vec<&str>) -> Vec<Orbit> {
+fn parse_orbits(input: &Vec<&str>) -> Vec<Orbit> {
     input
         .into_iter()
         .map(|string| {
@@ -50,22 +45,76 @@ fn parse_orbits(input: Vec<&str>) -> Vec<Orbit> {
         .collect()
 }
 
+fn add_orbit_graph_edge(orbit_graph: &mut OrbitGraph, start: String, end: String) {
+    match orbit_graph.get_mut(&start) {
+        Some(orbiters) => {
+            orbiters.push(end.to_string());
+        }
+        None => {
+            let orbiters = vec![end.to_string()];
+            orbit_graph.insert(start, orbiters);
+        }
+    }
+}
+
 fn build_orbit_graph(orbits: Vec<Orbit>) -> OrbitGraph {
     let mut graph = OrbitGraph::new();
 
     for orbit in orbits {
-        match graph.get_mut(&orbit.parent) {
-            Some(orbiters) => {
-                orbiters.push(orbit.orbiter);
-            }
-            None => {
-                let orbiters = vec![orbit.orbiter];
-                graph.insert(orbit.parent, orbiters);
+        add_orbit_graph_edge(&mut graph, orbit.orbiter.clone(), orbit.parent.clone());
+        add_orbit_graph_edge(&mut graph, orbit.parent.clone(), orbit.orbiter.clone());
+    }
+
+    graph
+}
+
+fn find_shortest_path_length(graph: &OrbitGraph, start: String, target: String) -> usize {
+    let mut queue = std::collections::vec_deque::VecDeque::new();
+    let mut distances = std::collections::HashMap::new();
+    let mut seen_planets = HashSet::new();
+
+    queue.push_front(start.clone());
+    distances.insert(start.clone(), 0 as usize);
+
+    while let Some(next) = queue.pop_back() {
+        seen_planets.insert(next.clone());
+        let distance = distances.get(&next).unwrap().clone();
+        if let Some(neighbours) = graph.get(&next) {
+            neighbours.iter().for_each(|n| {
+                if !seen_planets.contains(n) {
+                    queue.push_front(n.to_owned());
+                }
+                let new_distance = distance + 1;
+                match distances.get_mut(n) {
+                    Some(v) => { *v = std::cmp::min(v.to_owned(), new_distance); }
+                    _ => { distances.insert(n.to_owned(), distance + 1); }
+                }
+            });
+        }
+    }
+
+    distances.get(&target).unwrap().clone() - 2
+}
+
+fn count_total_orbits(graph: &OrbitGraph) -> usize {
+    let mut distances = std::collections::HashMap::<String, usize>::new();
+    let mut unseen: Vec<String> = vec![String::from("COM")];
+    let mut seen_planets = HashSet::new();
+
+    while let Some(parent) = unseen.pop() {
+        seen_planets.insert(parent.clone());
+        if let Some(neighbours) = graph.get(&parent) {
+            for neighbour in neighbours {
+                if !seen_planets.contains(neighbour) {
+                    let depth = distances.get(&parent).unwrap_or(&0).clone();
+                    distances.insert(neighbour.clone(), depth + 1);
+                    unseen.push(neighbour.clone());
+                }
             }
         }
     }
 
-    graph
+    distances.values().sum()
 }
 
 fn input() -> Vec<&'static str> {
@@ -1533,8 +1582,35 @@ fn test_input() -> Vec<&'static str> {
     ]
 }
 
+fn test_input2() -> Vec<&'static str> {
+    vec![
+        "COM)B",
+        "B)C",
+        "C)D",
+        "D)E",
+        "E)F",
+        "B)G",
+        "G)H",
+        "D)I",
+        "E)J",
+        "J)K",
+        "K)L",
+        "K)YOU",
+        "I)SAN",
+    ]
+}
+
 #[test]
 fn test_part1() {
     let test_input = test_input();
-    assert_eq!(part1(test_input), 42);
+    assert_eq!(part1(&test_input), 42);
+}
+
+#[test]
+fn test_part2() {
+    let test_input = test_input2();
+    let orbits = parse_orbits(&test_input);
+    let graph = build_orbit_graph(orbits);
+    let shortest_path = find_shortest_path_length(&graph, String::from("YOU"), String::from("SAN"));
+    assert_eq!(shortest_path, 4);
 }
