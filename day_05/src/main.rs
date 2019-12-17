@@ -1,5 +1,8 @@
 fn main() {
-    part1();
+    let output = part1();
+    println!("Part 1: {:?}", output);
+    let output = part2();
+    println!("Part 2: {:?}", output);
 }
 
 fn input() -> Vec<isize> {
@@ -18,7 +21,7 @@ enum Parameter {
 impl Parameter {
     fn eval(&self, memory: &Memory) -> isize {
         match self {
-            Parameter::Value{ value: v} => v.clone(),
+            Parameter::Value { value: v } => v.clone(),
             Parameter::Reference { address: a } => memory.get(*a).unwrap().clone()
         }
     }
@@ -29,8 +32,12 @@ impl Parameter {
 enum Operation {
     Add(Parameter, Parameter, Parameter),
     Mul(Parameter, Parameter, Parameter),
-    ReadInt(Parameter),
-    Print(Parameter),
+    LessThan(Parameter, Parameter, Parameter),
+    Equal(Parameter, Parameter, Parameter),
+    JumpTrue(Parameter, Parameter),
+    JumpFalse(Parameter, Parameter),
+    Input(Parameter),
+    Output(Parameter),
     NoOp,
     Halt,
 }
@@ -40,8 +47,12 @@ impl Operation {
         match self {
             Self::Add(..) => 4,
             Self::Mul(..) => 4,
-            Self::ReadInt(..) => 2,
-            Self::Print(..) => 2,
+            Self::LessThan(..) => 4,
+            Self::Equal(..) => 4,
+            Self::JumpTrue(..) => 3,
+            Self::JumpFalse(..) => 3,
+            Self::Input(..) => 2,
+            Self::Output(..) => 2,
             Self::NoOp => 1,
             Self::Halt => 1
         }
@@ -49,9 +60,8 @@ impl Operation {
 }
 
 
-type RawProgram = Vec<isize>;
-type Program = Vec<Operation>;
 type Memory = Vec<isize>;
+type Output = Vec<String>;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 enum Mode {
@@ -71,26 +81,85 @@ impl Mode {
 
 type ModeSet = (Mode, Mode, Mode);
 
+#[derive(Debug)]
 struct IntCodeComputer {
     memory: Memory,
     input: Memory,
+    output: Memory,
     pc: usize,
 }
 
 impl IntCodeComputer {
-    fn new(memory: Memory) -> Self {
-        IntCodeComputer { memory: memory.clone(), input: memory.clone(), pc: 0 }
+    fn new(memory: Memory, input: Memory) -> Self {
+        IntCodeComputer { memory, input, output: vec![], pc: 0 }
     }
 
-    fn parse_program(&mut self) -> Program {
-        let mut parsed_program: Program = vec![];
-        while self.pc < self.memory.len() {
-            let operation = Self::parse_operation(&self.memory, self.pc);
-            let op_length = operation.size();
-            self.pc = self.pc + op_length;
-            parsed_program.push(operation);
+    fn tick(&mut self) -> State {
+        let operation = Self::next_operation(&self.memory, self.pc);
+        let new_state = self.execute_command(&operation);
+
+        match new_state {
+            State::Running => self.pc += operation.size(),
+            _ => ()
         }
-        parsed_program
+
+        new_state
+    }
+
+    fn next_operation(memory: &Memory, position: usize) -> Operation {
+        let raw_op_code = memory[position];
+        let (op_code, mode_set) = Self::decode_opcode(raw_op_code);
+
+        match op_code {
+            1 => {
+                Operation::Add(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    Self::get_parameter_for_mode(&memory, position + 3, mode_set.2),
+                )
+            }
+            2 => {
+                Operation::Mul(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    Self::get_parameter_for_mode(&memory, position + 3, mode_set.2),
+                )
+            }
+            3 => {
+                Operation::Input(Self::get_parameter_for_mode(&memory, position + 1, mode_set.0))
+            }
+            4 => {
+                Operation::Output(Self::get_parameter_for_mode(&memory, position + 1, mode_set.0))
+            }
+            5 => {
+                Operation::JumpTrue(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                )
+            }
+            6 => {
+                Operation::JumpFalse(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                )
+            }
+            7 => {
+                Operation::LessThan(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    Self::get_reference(&memory, position + 3),
+                )
+            }
+            8 => {
+                Operation::Equal(
+                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
+                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    Self::get_reference(&memory, position + 3),
+                )
+            }
+            99 => Operation::Halt,
+            _ => Operation::NoOp
+        }
     }
 
     fn decode_opcode(input: isize) -> (usize, ModeSet) {
@@ -105,161 +174,215 @@ impl IntCodeComputer {
 
         (
             opcode as usize,
-            (mode_c, mode_b, mode_a),
+            (mode_a, mode_b, mode_c),
         )
     }
 
-    fn parse_operation(program: &RawProgram, position: usize) -> Operation {
-        let raw_op_code = program.get(position).expect("Cannot find position in memory");
-
-        let op_code = *raw_op_code % 100;
-
-        match op_code {
-            99 => Operation::Halt,
-            4 => Operation::Print(Parameter::Reference { address: Self::get_reference(&program, position + 1) }),
-            3 => Operation::ReadInt(Parameter::Reference { address: Self::get_reference(&program, position + 1) }),
-            1 => {
-                let (_, mode_set) = Self::decode_opcode(*raw_op_code);
-                Operation::Add(
-                    Self::get_parameter_for_mode(&program, position + 1, mode_set.2),
-                    Self::get_parameter_for_mode(&program, position + 2, mode_set.1),
-                    Self::get_parameter_for_mode(&program, position + 3, mode_set.0),
-                )
-            }
-            2 => {
-                let (_, mode_set) = Self::decode_opcode(*raw_op_code);
-                Operation::Mul(
-                    Self::get_parameter_for_mode(&program, position + 1, mode_set.2),
-                    Self::get_parameter_for_mode(&program, position + 2, mode_set.1),
-                    Self::get_parameter_for_mode(&program, position + 3, mode_set.0),
-                )
-            }
-            _ => Operation::NoOp
-        }
-    }
-
-    fn get_parameter_for_mode(program: &RawProgram, index: usize, mode: Mode) -> Parameter {
+    fn get_parameter_for_mode(program: &Memory, index: usize, mode: Mode) -> Parameter {
         match mode {
-            Mode::Position => Parameter::Reference { address: Self::get_reference(&program, index) },
-            Mode::Immediate => Parameter::Value { value: Self::get_value(&program, index) }
+            Mode::Position => Self::get_reference(&program, index),
+            Mode::Immediate => Self::get_value(&program, index),
         }
     }
 
-    fn get_parameter(program: &RawProgram, index: usize) -> isize {
+    fn get_parameter(program: &Memory, index: usize) -> isize {
         program.get(index).unwrap().clone()
     }
 
-    fn get_reference(program: &RawProgram, index: usize) -> usize {
-        Self::get_parameter(&program, index) as usize
+    fn get_reference(program: &Memory, index: usize) -> Parameter {
+        Parameter::Reference { address: Self::get_parameter(&program, index) as usize }
     }
 
-    fn get_value(program: &RawProgram, index: usize) -> isize {
-        Self::get_parameter(&program, index)
+    fn get_value(program: &Memory, index: usize) -> Parameter {
+        Parameter::Value { value: Self::get_parameter(&program, index) }
     }
 
-    fn run_program(&mut self) {
-        let operations = self.parse_program();
-        self.pc = 0;
-        for operation in operations {
-            let new_state = self.execute_command(&operation);
-            if new_state == State::Halt {
-                break
+    fn run(&mut self) -> Output {
+        loop {
+            let state = self.tick();
+            match state {
+                State::Halt => break,
+                _ => continue
             }
-            self.pc += operation.size();
         }
+
+        self.output.clone().iter()
+            .map(|x| format!("{:?}", x))
+            .collect()
     }
 
     fn execute_command(&mut self, operation: &Operation) -> State {
-//        println!("{:?}", operation);
-
         match operation {
-            Operation::ReadInt(Parameter::Reference {address: v}) => {
+            Operation::Input(Parameter::Reference { address: v }) => {
                 let cell = self.memory.get_mut(*v).unwrap();
-                *cell = 1;
-                println!("READ\t{:?}", v);
+                *cell = self.input.pop().unwrap();
                 State::Running
-            },
-            Operation::Add(a, b, Parameter::Reference { address: target}) => {
+            }
+            Operation::Add(a, b, Parameter::Reference { address: target }) => {
                 let x = a.eval(&self.memory);
                 let y = b.eval(&self.memory);
                 self.memory[*target] = x + y;
-                println!("ADD\t{:?} + {:?} = {:?}", x, y, self.memory[*target]);
                 State::Running
-            },
-            Operation::Mul(a, b, Parameter::Reference { address: target}) => {
+            }
+            Operation::Mul(a, b, Parameter::Reference { address: target }) => {
                 let x = a.eval(&self.memory);
                 let y = b.eval(&self.memory);
                 self.memory[*target] = x * y;
-                println!("MUL\t{:?} * {:?} = {:?}", x, y, self.memory[*target]);
                 State::Running
-            },
-            Operation::Print(address) => {
-                println!("PRINT\t{:?}", address.eval(&self.memory));
+            }
+            Operation::JumpTrue(a, b) => {
+                let val = a.eval(&self.memory);
+                let pointer = b.eval(&self.memory) as usize;
+                if val != 0 {
+                    self.pc = pointer as usize;
+                    State::Jump
+                } else {
+                    State::Running
+                }
+            }
+            Operation::JumpFalse(a, b) => {
+                let val = a.eval(&self.memory);
+                let pointer = b.eval(&self.memory) as usize;
+                if val == 0 {
+                    self.pc = pointer as usize;
+                    State::Jump
+                } else {
+                    State::Running
+                }
+            }
+            Operation::LessThan(a, b, Parameter::Reference { address: target }) => {
+                if a.eval(&self.memory) < b.eval(&self.memory) {
+                    self.memory[*target] = 1;
+                } else {
+                    self.memory[*target] = 0;
+                }
                 State::Running
-            },
+            }
+            Operation::Equal(a, b, Parameter::Reference { address: target }) => {
+                if a.eval(&self.memory) == b.eval(&self.memory) {
+                    self.memory[*target] = 1;
+                } else {
+                    self.memory[*target] = 0;
+                }
+                State::Running
+            }
+            Operation::Output(address) => {
+                let value = address.eval(&self.memory);
+                self.output.push(value);
+                State::Running
+            }
             Operation::Halt => {
-                println!("HALT");
-                println!("{:?}", &self.memory);
                 State::Halt
-            },
+            }
             Operation::NoOp => State::Running,
             _ => panic!("Unknown Operation")
         }
-//        println!("{:?}", self.memory);
     }
 }
 
 #[derive(Debug, PartialEq)]
 enum State {
     Halt,
-    Running
+    Running,
+    Jump,
 }
 
-fn part1() {
-    let input = input();
-    let mut comp = IntCodeComputer::new(input);
-    comp.run_program();
+fn part1() -> Output {
+    let memory = input();
+    let mut comp = IntCodeComputer::new(memory, vec![1]);
+    comp.run()
+}
+
+fn part2() -> Output {
+    let memory = input();
+    let mut comp = IntCodeComputer::new(memory, vec![5]);
+    comp.run()
 }
 
 
-#[test]
-fn test_parse_instruction_code() {
-    assert_eq!(IntCodeComputer::decode_opcode(102).1, (Mode::Position, Mode::Position, Mode::Immediate));
-    assert_eq!(IntCodeComputer::decode_opcode(01).1, (Mode::Position, Mode::Position, Mode::Position));
-    assert_eq!(IntCodeComputer::decode_opcode(11101).1, (Mode::Immediate, Mode::Immediate, Mode::Immediate));
+#[cfg(test)]
+mod test {
+    use crate::*;
+
+    #[test]
+    fn test_parse_instruction_code() {
+        assert_eq!(IntCodeComputer::decode_opcode(102).1, (Mode::Immediate, Mode::Position, Mode::Position));
+        assert_eq!(IntCodeComputer::decode_opcode(01).1, (Mode::Position, Mode::Position, Mode::Position));
+        assert_eq!(IntCodeComputer::decode_opcode(11101).1, (Mode::Immediate, Mode::Immediate, Mode::Immediate));
+    }
+
+    #[test]
+    fn test_lt_eq_operations() {
+        let programs: Vec<Memory> = vec![
+            vec![3, 9, 8, 9, 10, 9, 4, 9, 99, -1, 8],
+            vec![3, 9, 7, 9, 10, 9, 4, 9, 99, -1, 8],
+            vec![3, 3, 1108, -1, 8, 3, 4, 3, 99],
+            vec![3, 3, 1107, -1, 8, 3, 4, 3, 99],
+        ];
+
+        let specs: Vec<Vec<(Memory, Output)>> = vec![
+            vec![
+                (vec![8], vec![String::from("1")]),
+                (vec![9], vec![String::from("0")]),
+            ],
+            vec![
+                (vec![7], vec![String::from("1")]),
+                (vec![9], vec![String::from("0")]),
+            ],
+            vec![
+                (vec![8], vec![String::from("1")]),
+                (vec![9], vec![String::from("0")]),
+            ],
+            vec![
+                (vec![7], vec![String::from("1")]),
+                (vec![9], vec![String::from("0")]),
+            ],
+        ];
+
+        programs.iter().zip(&specs).for_each(|(p, specs)| {
+            for spec in specs {
+                let mut comp = IntCodeComputer::new(p.clone(), spec.0.clone());
+                let output = comp.run();
+                assert_eq!(output, spec.1);
+            }
+        });
+    }
+
+    #[test]
+    fn test_jump_operations() {
+        let programs: Vec<Memory> = vec![
+            vec![3, 12, 6, 12, 15, 1, 13, 14, 13, 4, 13, 99, -1, 0, 1, 9],
+            vec![3, 3, 1105, -1, 9, 1101, 0, 0, 12, 4, 12, 99, 1],
+        ];
+
+        let specs = vec![
+            (vec![0], vec![String::from("0")]),
+            (vec![1], vec![String::from("1")]),
+            (vec![5], vec![String::from("1")]),
+        ];
+
+        programs.iter()
+            .zip(&specs)
+            .for_each(|(p, spec)| {
+                let mut comp = IntCodeComputer::new(p.clone(), spec.0.clone());
+                let output = comp.run();
+                assert_eq!(output, spec.1);
+            });
+    }
+
+//    #[test]
+//    fn test_larger_program() {
+//        let memory = vec![
+//            3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31,
+//            1106, 0, 36, 98, 0, 0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104,
+//            999, 1105, 1, 46, 1101, 1000, 1, 20, 4, 20, 1105, 1, 46, 98, 99
+//        ];
+//        let input: Memory = vec![100];
+//        let output = vec!["1000".to_string()];
+//
+//        let mut comp = IntCodeComputer::new(memory, input);
+//        assert_eq!(output, comp.run());
+//    }
 }
 
-#[test]
-fn test_parse_program() {
-    let raw_programs: Vec<RawProgram> = vec![
-        vec![3, 100, 1, 1, 0, 0],
-        vec![3, 100, 11101, 1, 0, 0],
-    ];
 
-    let parsed_programs: Vec<Program> = raw_programs
-        .iter()
-        .map(|x| IntCodeComputer::parse_program(&x))
-        .collect();
-
-    let expected_programs = vec![
-        vec![
-            Operation::ReadInt(Parameter::Reference { address: 100 }),
-            Operation::Add(
-                Parameter::Reference { address: 1 },
-                Parameter::Reference { address: 0 },
-                Parameter::Reference { address: 0 },
-            )],
-        vec![
-            Operation::ReadInt(Parameter::Reference { address: 100 }),
-            Operation::Add(
-                Parameter::Value { value: 1 },
-                Parameter::Value { value: 0 },
-                Parameter::Value { value: 0 },
-            )]
-    ];
-
-    parsed_programs
-        .iter()
-        .zip(&expected_programs)
-        .for_each(|(parsed, expected)| assert_eq!(parsed, expected));
-}
