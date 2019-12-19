@@ -16,7 +16,8 @@ fn main() {
 }
 
 fn part1(input: &Vec<i32>) {
-    let total_fuel = input.iter()
+    let total_fuel = input
+        .iter()
         .map(mass_to_fuel)
         .fold(0, |left, right| left + right);
     println!("Case 1 - Total fuel: {:?}", total_fuel);
@@ -27,9 +28,10 @@ fn mass_to_fuel(mass: &i32) -> i32 {
 }
 
 fn part2(input: &Vec<i32>) {
-    let total_fuel = input.iter()
+    let total_fuel: i32 = input
+        .iter()
         .map(mass_and_fuel_to_fuel)
-        .fold(0, |left, right| left + right);
+        .sum();
 
     println!("Case 2 - Total fuel: {:?}", total_fuel);
 }
@@ -43,7 +45,9 @@ fn mass_and_fuel_to_fuel(module_mass: &i32) -> i32 {
 
     loop {
         let fuel = mass_to_fuel(&current_mass);
-        if fuel <= 0 { break }
+        if fuel <= 0 {
+            break;
+        }
         total_fuel += fuel;
         current_mass = fuel;
         println!("{:?}", fuel);
