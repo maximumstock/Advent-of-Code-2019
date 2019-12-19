@@ -42,7 +42,8 @@ fn rule_never_decreasing(input: usize) -> bool {
     let mut sorted_chars = chars.clone();
     sorted_chars.sort();
 
-    let n_matching_chars = unsorted_chars.iter()
+    let n_matching_chars = unsorted_chars
+        .iter()
         .zip(&sorted_chars)
         .filter(|&(a, b)| a == b)
         .count();
@@ -63,12 +64,13 @@ fn rule_double_group_required(input: usize) -> bool {
 
     type OccurrenceMap = std::collections::HashMap<char, usize>;
 
-    let occurences = chars
-        .iter()
-        .fold(std::collections::HashMap::new(), |mut acc: OccurrenceMap, &character| {
+    let occurences = chars.iter().fold(
+        std::collections::HashMap::new(),
+        |mut acc: OccurrenceMap, &character| {
             acc.entry(character).and_modify(|x| *x += 1).or_insert(1);
             acc
-        });
+        },
+    );
 
     let n_double_groups = occurences.values().filter(|x| **x == 2).count();
     n_double_groups > 0
