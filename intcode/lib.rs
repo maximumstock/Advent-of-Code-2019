@@ -76,8 +76,8 @@
     }
 
     impl IntCodeComputer {
-        pub fn new(memory: Memory, input: Memory) -> Self {
-            IntCodeComputer { memory, input, output: vec![], pc: 0 }
+        pub fn new(memory: Memory) -> Self {
+            IntCodeComputer { memory, input: vec![],  output: vec![], pc: 0 }
         }
 
         fn tick(&mut self) -> State {
@@ -183,7 +183,8 @@
             Parameter::Value { value: Self::get_parameter(&program, index) }
         }
 
-        pub fn run(&mut self) -> Output {
+        pub fn run(&mut self, input: Memory) -> Output {
+            self.input = input;
             loop {
                 let state = self.tick();
                 match state {
@@ -315,8 +316,8 @@
 
             programs.iter().zip(&specs).for_each(|(p, specs)| {
                 for spec in specs {
-                    let mut comp = IntCodeComputer::new(p.clone(), spec.0.clone());
-                    let output = comp.run();
+                    let mut comp = IntCodeComputer::new(p.clone());
+                    let output = comp.run(spec.0.clone());
                     assert_eq!(output, spec.1);
                 }
             });
@@ -338,8 +339,8 @@
             programs.iter()
                 .zip(&specs)
                 .for_each(|(p, spec)| {
-                    let mut comp = IntCodeComputer::new(p.clone(), spec.0.clone());
-                    let output = comp.run();
+                    let mut comp = IntCodeComputer::new(p.clone());
+                    let output = comp.run(spec.0.clone());
                     assert_eq!(output, spec.1);
                 });
         }
