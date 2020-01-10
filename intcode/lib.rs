@@ -1,14 +1,17 @@
+use crate::Parameter::Reference;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Parameter {
-    Value { value: isize },
-    Reference { address: usize },
+    Value { value: MemoryValue },
+    Reference { address: MemoryIndex },
 }
 
 impl Parameter {
-    fn eval(&self, memory: &Memory) -> isize {
+    fn eval(&self, memory: &Memory) -> MemoryValue {
+//        println!("{:?}", self);
         match self {
             Parameter::Value { value: v } => v.clone(),
-            Parameter::Reference { address: a } => memory.get(*a).unwrap().clone()
+            Parameter::Reference { address: a } => memory.get(*a).unwrap().clone(),
         }
     }
 }
@@ -24,12 +27,12 @@ enum Operation {
     JumpFalse(Parameter, Parameter),
     Input(Parameter),
     Output(Parameter),
-    NoOp,
+    AdjustRelativeBase(Parameter),
     Halt,
 }
 
 impl Operation {
-    fn size(&self) -> usize {
+    fn size(&self) -> u8 {
         match self {
             Self::Add(..) => 4,
             Self::Mul(..) => 4,
@@ -39,27 +42,31 @@ impl Operation {
             Self::JumpFalse(..) => 3,
             Self::Input(..) => 2,
             Self::Output(..) => 2,
-            Self::NoOp => 1,
-            Self::Halt => 1
+            Self::AdjustRelativeBase(..) => 2,
+            Self::Halt => 1,
         }
     }
 }
 
 
-pub type Memory = Vec<isize>;
+pub type MemoryValue = isize;
+pub type MemoryIndex = usize;
+pub type Memory = Vec<MemoryValue>;
 pub type Output = Vec<String>;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 enum Mode {
     Position,
     Immediate,
+    Relative,
 }
 
 impl Mode {
-    fn from_isize(input: isize) -> Self {
+    fn from_isize(input: MemoryValue) -> Self {
         match input {
             0 => Mode::Position,
             1 => Mode::Immediate,
+            2 => Mode::Relative,
             _ => unreachable!()
         }
     }
@@ -72,12 +79,16 @@ pub struct IntCodeComputer {
     memory: Memory,
     input: Memory,
     output: Memory,
-    pc: usize,
+    pc: MemoryIndex,
+    relative_base: MemoryIndex,
 }
 
 impl IntCodeComputer {
     pub fn new(memory: Memory) -> Self {
-        IntCodeComputer { memory, input: vec![], output: vec![], pc: 0 }
+        let len = memory.len();
+        let mut cpu = IntCodeComputer { memory, input: vec![], output: vec![], pc: 0, relative_base: 0 };
+        cpu.memory.extend((0..len*100).into_iter().map(|_| 0));
+        cpu
     }
 
     pub fn get_output(&self) -> Memory {
@@ -85,76 +96,80 @@ impl IntCodeComputer {
     }
 
     fn tick(&mut self) -> State {
-//        println!("{:#?}", self);
-        let operation = Self::next_operation(&self.memory, self.pc);
-//        println!("Next Operation: {:#?}", operation);
+        let operation = self.next_operation();
         let new_state = self.execute_command(&operation);
 
         match new_state {
             State::Jump | State::Halt | State::WaitingForInput => (),
-            _ => self.pc += operation.size(),
+            _ => self.pc += operation.size() as usize,
         }
 
         new_state
     }
 
-    fn next_operation(memory: &Memory, position: usize) -> Operation {
-        let raw_op_code = memory[position];
+    fn next_operation(&self) -> Operation {
+        let position = self.pc;
+        let raw_op_code = self.memory[position];
         let (op_code, mode_set) = Self::decode_opcode(raw_op_code);
 
         match op_code {
             1 => {
                 Operation::Add(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
-                    Self::get_parameter_for_mode(&memory, position + 3, mode_set.2),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 3, mode_set.2),
                 )
             }
             2 => {
                 Operation::Mul(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
-                    Self::get_parameter_for_mode(&memory, position + 3, mode_set.2),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 3, mode_set.2),
                 )
             }
             3 => {
-                Operation::Input(Self::get_parameter_for_mode(&memory, position + 1, mode_set.0))
+                Operation::Input(self.get_parameter_for_mode(position + 1, mode_set.0))
             }
             4 => {
-                Operation::Output(Self::get_parameter_for_mode(&memory, position + 1, mode_set.0))
+                Operation::Output(self.get_parameter_for_mode(position + 1, mode_set.0))
             }
             5 => {
                 Operation::JumpTrue(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
                 )
             }
             6 => {
                 Operation::JumpFalse(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
                 )
             }
             7 => {
                 Operation::LessThan(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
-                    Self::get_reference(&memory, position + 3),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 3, mode_set.2),
                 )
             }
             8 => {
                 Operation::Equal(
-                    Self::get_parameter_for_mode(&memory, position + 1, mode_set.0),
-                    Self::get_parameter_for_mode(&memory, position + 2, mode_set.1),
-                    Self::get_reference(&memory, position + 3),
+                    self.get_parameter_for_mode(position + 1, mode_set.0),
+                    self.get_parameter_for_mode(position + 2, mode_set.1),
+                    self.get_parameter_for_mode(position + 3, mode_set.2),
+                )
+            }
+            9 => {
+                Operation::AdjustRelativeBase(
+                    self.get_parameter_for_mode(position + 1, mode_set.0)
                 )
             }
             99 => Operation::Halt,
-            _ => Operation::NoOp
+            _ => unreachable!()
         }
     }
 
-    fn decode_opcode(input: isize) -> (usize, ModeSet) {
+    fn decode_opcode(input: MemoryValue) -> (u32, ModeSet) {
         let opcode = input % 100;
         let c = (input / 10_000) % 10;
         let b = (input / 1_000) % 10;
@@ -165,28 +180,33 @@ impl IntCodeComputer {
         let mode_c = Mode::from_isize(c);
 
         (
-            opcode as usize,
+            opcode as u32,
             (mode_a, mode_b, mode_c),
         )
     }
 
-    fn get_parameter_for_mode(program: &Memory, index: usize, mode: Mode) -> Parameter {
+    fn get_parameter_for_mode(&self, index: MemoryIndex, mode: Mode) -> Parameter {
         match mode {
-            Mode::Position => Self::get_reference(&program, index),
-            Mode::Immediate => Self::get_value(&program, index),
+            Mode::Position => Self::get_reference(&self, index),
+            Mode::Immediate => Self::get_value(&self, index),
+            Mode::Relative => {
+                let value_at_index = Self::get_parameter(&self, index);
+                let relative_reference_address = (self.relative_base as isize + value_at_index) as usize;
+                Reference { address: relative_reference_address }
+            }
         }
     }
 
-    fn get_parameter(program: &Memory, index: usize) -> isize {
-        program.get(index).unwrap().clone()
+    fn get_parameter(&self, index: MemoryIndex) -> MemoryValue {
+        self.memory.get(index as usize).unwrap().clone()
     }
 
-    fn get_reference(program: &Memory, index: usize) -> Parameter {
-        Parameter::Reference { address: Self::get_parameter(&program, index) as usize }
+    fn get_reference(&self, index: MemoryIndex) -> Parameter {
+        Parameter::Reference { address: self.get_parameter(index) as usize }
     }
 
-    fn get_value(program: &Memory, index: usize) -> Parameter {
-        Parameter::Value { value: Self::get_parameter(&program, index) }
+    fn get_value(&self, index: MemoryIndex) -> Parameter {
+        Parameter::Value { value: self.get_parameter(index) }
     }
 
     pub fn run(&mut self, input: Memory) -> Output {
@@ -208,7 +228,7 @@ impl IntCodeComputer {
         self.tick()
     }
 
-    pub fn read_input(&mut self, input: isize) {
+    pub fn read_input(&mut self, input: MemoryValue) {
         self.input.push(input);
     }
 
@@ -220,7 +240,7 @@ impl IntCodeComputer {
                         let cell = self.memory.get_mut(*v).unwrap();
                         *cell = value;
                         State::Running
-                    },
+                    }
                     None => State::WaitingForInput
                 }
             }
@@ -238,9 +258,9 @@ impl IntCodeComputer {
             }
             Operation::JumpTrue(a, b) => {
                 let val = a.eval(&self.memory);
-                let pointer = b.eval(&self.memory) as usize;
+                let pointer = b.eval(&self.memory) as MemoryIndex;
                 if val != 0 {
-                    self.pc = pointer as usize;
+                    self.pc = pointer;
                     State::Jump
                 } else {
                     State::Running
@@ -248,9 +268,9 @@ impl IntCodeComputer {
             }
             Operation::JumpFalse(a, b) => {
                 let val = a.eval(&self.memory);
-                let pointer = b.eval(&self.memory) as usize;
+                let pointer = b.eval(&self.memory) as MemoryIndex;
                 if val == 0 {
-                    self.pc = pointer as usize;
+                    self.pc = pointer;
                     State::Jump
                 } else {
                     State::Running
@@ -280,8 +300,12 @@ impl IntCodeComputer {
             Operation::Halt => {
                 State::Halt
             }
-            Operation::NoOp => State::Running,
-            _ => panic!("Unknown Operation")
+            Operation::AdjustRelativeBase(a) => {
+                let value = a.eval(&self.memory);
+                self.relative_base = (self.relative_base as isize + value) as usize;
+                State::Running
+            }
+            x => panic!("Unknown Operation: {:?}", x)
         }
     }
 }
@@ -291,7 +315,7 @@ pub enum State {
     Halt,
     Running,
     Jump,
-    Output(isize),
+    Output(MemoryValue),
     WaitingForInput,
 }
 
@@ -366,17 +390,36 @@ mod test {
             });
     }
 
-//    #[test]
-//    fn test_larger_program() {
-//        let memory = vec![
-//            3, 21, 1008, 21, 8, 20, 1005, 20, 22, 107, 8, 21, 20, 1006, 20, 31,
-//            1106, 0, 36, 98, 0, 0, 1002, 21, 125, 20, 4, 20, 1105, 1, 46, 104,
-//            999, 1105, 1, 46, 1101, 1000, 1, 20, 4, 20, 1105, 1, 46, 98, 99
-//        ];
-//        let input: Memory = vec![100];
-//        let output = vec!["1000".to_string()];
-//
-//        let mut comp = IntCodeComputer::new(memory, input);
-//        assert_eq!(output, comp.run());
-//    }
+    #[test]
+    fn test_relative_mode() {
+        let program = vec![109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99];
+        let input: Memory = vec![];
+        let output = program.clone();
+
+        let mut comp = IntCodeComputer::new(program);
+        comp.run(input);
+        assert_eq!(output, comp.output);
+    }
+
+    #[test]
+    fn test_large_numbers() {
+        let program = vec![104, 1125899906842624, 99];
+        let input: Memory = vec![];
+        let output = vec![1125899906842624];
+
+        let mut comp = IntCodeComputer::new(program);
+        comp.run(input);
+        assert_eq!(output, comp.output);
+    }
+
+    #[test]
+    fn test_large_number_output() {
+        let program = vec![1102, 34915192, 34915192, 7, 4, 7, 99, 0];
+        let input: Memory = vec![];
+
+        let mut comp = IntCodeComputer::new(program);
+        comp.run(input);
+        let last_output = comp.output.first().unwrap().to_string();
+        assert_eq!(last_output.len(), 16);
+    }
 }
