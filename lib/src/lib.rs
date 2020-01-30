@@ -12,8 +12,8 @@ impl<T: Display + Debug> Display for Grid<T> {
         let mut output = String::from("");
         let (x, y) = self.grid_size;
 
-        for row in (0..y).into_iter() {
-            for col in (0..x).into_iter() {
+        for col in (0..y).into_iter() {
+            for row in (0..x).into_iter() {
                 let item = self.grid.get(col * y + row).unwrap();
                 output = output.add(format!("{}", item).as_str());
             }
@@ -24,7 +24,7 @@ impl<T: Display + Debug> Display for Grid<T> {
     }
 }
 
-impl<T: Default + Debug> Grid<T> {
+impl<T: Default + Debug>Grid<T> {
     pub fn new(width: usize, height: usize, x_offset: usize, y_offset: usize) -> Grid<T> {
         let mut data = Vec::with_capacity(width * height);
 
@@ -40,7 +40,7 @@ impl<T: Default + Debug> Grid<T> {
     }
 }
 
-impl<T: Debug> Grid<T> {
+impl<T: Debug + Clone> Grid<T> {
     pub fn get(&self, x: isize, y: isize) -> Result<&T, ()> {
         let (_, dim_y) = self.grid_size;
         let index = ((y * dim_y as isize + x) + self.offset as isize) as usize;
@@ -54,6 +54,10 @@ impl<T: Debug> Grid<T> {
         let old_item = self.grid.get_mut(index).unwrap();
         *old_item = item;
         Ok(())
+    }
+
+    pub fn grid(&self) -> Vec<T> {
+        self.grid.clone()
     }
 }
 
