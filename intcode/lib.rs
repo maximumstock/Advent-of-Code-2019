@@ -8,14 +8,13 @@ pub enum Parameter {
 
 impl Parameter {
     fn eval(&self, memory: &Memory) -> MemoryValue {
-//        println!("{:?}", self);
+        //        println!("{:?}", self);
         match self {
             Parameter::Value { value: v } => v.clone(),
             Parameter::Reference { address: a } => memory.get(*a).unwrap().clone(),
         }
     }
 }
-
 
 #[derive(Clone, Debug, PartialEq)]
 enum Operation {
@@ -48,7 +47,6 @@ impl Operation {
     }
 }
 
-
 pub type MemoryValue = isize;
 pub type MemoryIndex = usize;
 pub type Memory = Vec<MemoryValue>;
@@ -67,7 +65,7 @@ impl Mode {
             0 => Mode::Position,
             1 => Mode::Immediate,
             2 => Mode::Relative,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -86,9 +84,19 @@ pub struct IntCodeComputer {
 impl IntCodeComputer {
     pub fn new(memory: Memory) -> Self {
         let len = memory.len();
-        let mut cpu = IntCodeComputer { memory, input: vec![], output: vec![], pc: 0, relative_base: 0 };
-        cpu.memory.extend((0..len*100).into_iter().map(|_| 0));
+        let mut cpu = IntCodeComputer {
+            memory,
+            input: vec![],
+            output: vec![],
+            pc: 0,
+            relative_base: 0,
+        };
+        cpu.memory.extend((0..len * 100).into_iter().map(|_| 0));
         cpu
+    }
+
+    pub fn get_memory(&self) -> Memory {
+        self.memory.clone()
     }
 
     pub fn get_output(&self) -> Memory {
@@ -113,59 +121,41 @@ impl IntCodeComputer {
         let (op_code, mode_set) = Self::decode_opcode(raw_op_code);
 
         match op_code {
-            1 => {
-                Operation::Add(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                    self.get_parameter_for_mode(position + 3, mode_set.2),
-                )
-            }
-            2 => {
-                Operation::Mul(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                    self.get_parameter_for_mode(position + 3, mode_set.2),
-                )
-            }
-            3 => {
-                Operation::Input(self.get_parameter_for_mode(position + 1, mode_set.0))
-            }
-            4 => {
-                Operation::Output(self.get_parameter_for_mode(position + 1, mode_set.0))
-            }
-            5 => {
-                Operation::JumpTrue(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                )
-            }
-            6 => {
-                Operation::JumpFalse(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                )
-            }
-            7 => {
-                Operation::LessThan(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                    self.get_parameter_for_mode(position + 3, mode_set.2),
-                )
-            }
-            8 => {
-                Operation::Equal(
-                    self.get_parameter_for_mode(position + 1, mode_set.0),
-                    self.get_parameter_for_mode(position + 2, mode_set.1),
-                    self.get_parameter_for_mode(position + 3, mode_set.2),
-                )
-            }
+            1 => Operation::Add(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+                self.get_parameter_for_mode(position + 3, mode_set.2),
+            ),
+            2 => Operation::Mul(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+                self.get_parameter_for_mode(position + 3, mode_set.2),
+            ),
+            3 => Operation::Input(self.get_parameter_for_mode(position + 1, mode_set.0)),
+            4 => Operation::Output(self.get_parameter_for_mode(position + 1, mode_set.0)),
+            5 => Operation::JumpTrue(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+            ),
+            6 => Operation::JumpFalse(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+            ),
+            7 => Operation::LessThan(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+                self.get_parameter_for_mode(position + 3, mode_set.2),
+            ),
+            8 => Operation::Equal(
+                self.get_parameter_for_mode(position + 1, mode_set.0),
+                self.get_parameter_for_mode(position + 2, mode_set.1),
+                self.get_parameter_for_mode(position + 3, mode_set.2),
+            ),
             9 => {
-                Operation::AdjustRelativeBase(
-                    self.get_parameter_for_mode(position + 1, mode_set.0)
-                )
+                Operation::AdjustRelativeBase(self.get_parameter_for_mode(position + 1, mode_set.0))
             }
             99 => Operation::Halt,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 
@@ -179,10 +169,7 @@ impl IntCodeComputer {
         let mode_b = Mode::from_isize(b);
         let mode_c = Mode::from_isize(c);
 
-        (
-            opcode as u32,
-            (mode_a, mode_b, mode_c),
-        )
+        (opcode as u32, (mode_a, mode_b, mode_c))
     }
 
     fn get_parameter_for_mode(&self, index: MemoryIndex, mode: Mode) -> Parameter {
@@ -191,8 +178,11 @@ impl IntCodeComputer {
             Mode::Immediate => Self::get_value(&self, index),
             Mode::Relative => {
                 let value_at_index = Self::get_parameter(&self, index);
-                let relative_reference_address = (self.relative_base as isize + value_at_index) as usize;
-                Reference { address: relative_reference_address }
+                let relative_reference_address =
+                    (self.relative_base as isize + value_at_index) as usize;
+                Reference {
+                    address: relative_reference_address,
+                }
             }
         }
     }
@@ -202,11 +192,15 @@ impl IntCodeComputer {
     }
 
     fn get_reference(&self, index: MemoryIndex) -> Parameter {
-        Parameter::Reference { address: self.get_parameter(index) as usize }
+        Parameter::Reference {
+            address: self.get_parameter(index) as usize,
+        }
     }
 
     fn get_value(&self, index: MemoryIndex) -> Parameter {
-        Parameter::Value { value: self.get_parameter(index) }
+        Parameter::Value {
+            value: self.get_parameter(index),
+        }
     }
 
     pub fn run(&mut self, input: Memory) -> Output {
@@ -215,11 +209,13 @@ impl IntCodeComputer {
             let state = self.tick();
             match state {
                 State::Halt => break,
-                _ => continue
+                _ => continue,
             }
         }
 
-        self.output.clone().iter()
+        self.output
+            .clone()
+            .iter()
             .map(|x| format!("{:?}", x))
             .collect()
     }
@@ -234,16 +230,14 @@ impl IntCodeComputer {
 
     fn execute_command(&mut self, operation: &Operation) -> State {
         match operation {
-            Operation::Input(Parameter::Reference { address: v }) => {
-                match self.input.pop() {
-                    Some(value) => {
-                        let cell = self.memory.get_mut(*v).unwrap();
-                        *cell = value;
-                        State::Running
-                    }
-                    None => State::WaitingForInput
+            Operation::Input(Parameter::Reference { address: v }) => match self.input.pop() {
+                Some(value) => {
+                    let cell = self.memory.get_mut(*v).unwrap();
+                    *cell = value;
+                    State::Running
                 }
-            }
+                None => State::WaitingForInput,
+            },
             Operation::Add(a, b, Parameter::Reference { address: target }) => {
                 let x = a.eval(&self.memory);
                 let y = b.eval(&self.memory);
@@ -297,15 +291,13 @@ impl IntCodeComputer {
                 self.output.push(value.clone());
                 State::Output(value)
             }
-            Operation::Halt => {
-                State::Halt
-            }
+            Operation::Halt => State::Halt,
             Operation::AdjustRelativeBase(a) => {
                 let value = a.eval(&self.memory);
                 self.relative_base = (self.relative_base as isize + value) as usize;
                 State::Running
             }
-            x => panic!("Unknown Operation: {:?}", x)
+            x => panic!("Unknown Operation: {:?}", x),
         }
     }
 }
@@ -319,16 +311,24 @@ pub enum State {
     WaitingForInput,
 }
 
-
 #[cfg(test)]
 mod test {
-    use crate::{IntCodeComputer, Mode, Memory, Output};
+    use crate::{IntCodeComputer, Memory, Mode, Output};
 
     #[test]
     fn test_parse_instruction_code() {
-        assert_eq!(IntCodeComputer::decode_opcode(102).1, (Mode::Immediate, Mode::Position, Mode::Position));
-        assert_eq!(IntCodeComputer::decode_opcode(01).1, (Mode::Position, Mode::Position, Mode::Position));
-        assert_eq!(IntCodeComputer::decode_opcode(11101).1, (Mode::Immediate, Mode::Immediate, Mode::Immediate));
+        assert_eq!(
+            IntCodeComputer::decode_opcode(102).1,
+            (Mode::Immediate, Mode::Position, Mode::Position)
+        );
+        assert_eq!(
+            IntCodeComputer::decode_opcode(01).1,
+            (Mode::Position, Mode::Position, Mode::Position)
+        );
+        assert_eq!(
+            IntCodeComputer::decode_opcode(11101).1,
+            (Mode::Immediate, Mode::Immediate, Mode::Immediate)
+        );
     }
 
     #[test]
@@ -381,18 +381,18 @@ mod test {
             (vec![5], vec![String::from("1")]),
         ];
 
-        programs.iter()
-            .zip(&specs)
-            .for_each(|(p, spec)| {
-                let mut comp = IntCodeComputer::new(p.clone());
-                let output = comp.run(spec.0.clone());
-                assert_eq!(output, spec.1);
-            });
+        programs.iter().zip(&specs).for_each(|(p, spec)| {
+            let mut comp = IntCodeComputer::new(p.clone());
+            let output = comp.run(spec.0.clone());
+            assert_eq!(output, spec.1);
+        });
     }
 
     #[test]
     fn test_relative_mode() {
-        let program = vec![109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99];
+        let program = vec![
+            109, 1, 204, -1, 1001, 100, 1, 100, 1008, 100, 16, 101, 1006, 101, 0, 99,
+        ];
         let input: Memory = vec![];
         let output = program.clone();
 

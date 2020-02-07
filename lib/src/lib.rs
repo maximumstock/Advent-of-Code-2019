@@ -24,7 +24,7 @@ impl<T: Display + Debug> Display for Grid<T> {
     }
 }
 
-impl<T: Default + Debug>Grid<T> {
+impl<T: Default + Debug> Grid<T> {
     pub fn new(width: usize, height: usize, x_offset: usize, y_offset: usize) -> Grid<T> {
         let mut data = Vec::with_capacity(width * height);
 
