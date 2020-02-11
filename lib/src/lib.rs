@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Error, Formatter};
 use std::ops::Add;
-#[derive(Debug)]
+
+#[derive(Debug, Clone)]
 pub struct Grid<T: Debug> {
     grid: Vec<T>,
     grid_size: (usize, usize),
@@ -14,7 +15,7 @@ impl<T: Display + Debug> Display for Grid<T> {
 
         for col in (0..y).into_iter() {
             for row in (0..x).into_iter() {
-                let item = self.grid.get(col * y + row).unwrap();
+                let item = self.grid.get(col * x + row).unwrap();
                 output = output.add(format!("{}", item).as_str());
             }
             output = output.add("\n");
@@ -28,8 +29,8 @@ impl<T: Default + Debug> Grid<T> {
     pub fn new(width: usize, height: usize, x_offset: usize, y_offset: usize) -> Grid<T> {
         let mut data = Vec::with_capacity(width * height);
 
-        for _ in 0..width * height {
-            data.insert(0, T::default())
+        for i in 0..width * height {
+            data.insert(i, T::default())
         }
 
         Grid {
@@ -40,20 +41,84 @@ impl<T: Default + Debug> Grid<T> {
     }
 }
 
+impl<T: Debug> Grid<T> {
+    fn coords_to_index(&self, x: isize, y: isize) -> usize {
+        ((y * self.grid_size.0 as isize + x) + self.offset as isize) as usize
+    }
+}
+
+pub struct GridIntoIterator<T: Debug> {
+    grid: Grid<T>,
+    x: isize,
+    y: isize,
+}
+
+pub struct GridIteratorItem<T> {
+    pub element: T,
+    pub x: isize,
+    pub y: isize,
+}
+
+impl<T: Debug + Clone> IntoIterator for Grid<T> {
+    type Item = GridIteratorItem<T>;
+    type IntoIter = GridIntoIterator<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        GridIntoIterator {
+            grid: self,
+            x: 0,
+            y: 0,
+        }
+    }
+}
+
+impl<T: Debug + Clone> Iterator for GridIntoIterator<T> {
+    type Item = GridIteratorItem<T>;
+    fn next(&mut self) -> Option<GridIteratorItem<T>> {
+        let grid_size = self.grid.grid_size;
+        let dim_x = grid_size.0 as isize;
+        let dim_y = grid_size.1 as isize;
+
+        if self.x == dim_x && self.y == dim_y {
+            return None;
+        }
+
+        if self.x < dim_x {
+            self.x += 1;
+        } else if self.x == dim_x && self.y < dim_y {
+            self.x = 0;
+            self.y += 1;
+        }
+
+        let index = self.grid.coords_to_index(self.x, self.y);
+        self.grid.grid.get(index).map_or(None, |x| {
+            Some(GridIteratorItem {
+                x: self.x,
+                y: self.y,
+                element: x.clone(),
+            })
+        })
+    }
+}
+
 impl<T: Debug + Clone> Grid<T> {
     pub fn get(&self, x: isize, y: isize) -> Result<&T, ()> {
-        let (_, dim_y) = self.grid_size;
-        let index = ((y * dim_y as isize + x) + self.offset as isize) as usize;
-        let item = self.grid.get(index).unwrap();
-        Ok(item)
+        let index = self.coords_to_index(x, y) as usize;
+        match self.grid.get(index) {
+            Some(item) => Ok(item),
+            None => Err(()),
+        }
     }
 
     pub fn set(&mut self, x: isize, y: isize, item: T) -> Result<(), ()> {
-        let (_, dim_y) = self.grid_size;
-        let index = ((y * dim_y as isize + x) + self.offset as isize) as usize;
-        let old_item = self.grid.get_mut(index).unwrap();
-        *old_item = item;
-        Ok(())
+        let index = self.coords_to_index(x, y) as usize;
+        match self.grid.get_mut(index) {
+            Some(old_item) => {
+                *old_item = item;
+                Ok(())
+            }
+            None => Err(()),
+        }
     }
 
     pub fn grid(&self) -> Vec<T> {
