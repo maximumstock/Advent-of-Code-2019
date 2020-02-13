@@ -1,0 +1,21 @@
+
+running 1 test
+test tests::test_medium_labyrinth3 ... 
+########################
+#@..............ac.GI.b#
+###d#e#f################
+###A#B#C################
+###g#h#i################
+########################
+
+Running with 0 runners
+Running with 0 runners
+FAILED
+
+failures:
+
+failures:
+    tests::test_medium_labyrinth3
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 3 filtered out
+
