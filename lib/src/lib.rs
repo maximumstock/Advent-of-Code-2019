@@ -121,6 +121,15 @@ impl<T: Debug + Clone> Grid<T> {
         }
     }
 
+
+    pub fn iter(&self) -> GridIntoIterator<T> {
+        GridIntoIterator {
+            grid: self.clone(),
+            x: 0,
+            y: 0,
+        }
+    }
+
     pub fn grid(&self) -> Vec<T> {
         self.grid.clone()
     }
