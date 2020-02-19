@@ -85,14 +85,29 @@ impl IntCodeComputer {
     pub fn new(memory: Memory) -> Self {
         let len = memory.len();
         let mut cpu = IntCodeComputer {
-            memory,
+            memory: vec![],
             input: vec![],
             output: vec![],
             pc: 0,
             relative_base: 0,
         };
-        cpu.memory.extend((0..len * 100).into_iter().map(|_| 0));
+        cpu.set_memory(memory);
         cpu
+    }
+
+    pub fn reset(&mut self, memory: Memory) {
+        self.set_memory(memory);
+        self.output.clear();
+        self.input.clear();
+        self.pc = 0;
+        self.relative_base = 0;
+    }
+
+    fn set_memory(&mut self, memory: Memory) {
+        let memory_length = memory.len() * 10;
+        self.memory = memory;
+        self.memory
+            .extend((0..memory_length).into_iter().map(|_| 0));
     }
 
     pub fn get_memory(&self) -> Memory {
