@@ -45,6 +45,12 @@ impl<T: Debug> Grid<T> {
     fn coords_to_index(&self, x: isize, y: isize) -> usize {
         ((y * self.grid_size.0 as isize + x) + self.offset as isize) as usize
     }
+
+    pub fn get_row(&self, row_idx: usize) -> &[T] {
+        let (width, height) = self.grid_size;
+        let offset = row_idx * width;
+        &self.grid[offset..offset + width]
+    }
 }
 
 pub struct GridIntoIterator<T: Debug> {
@@ -53,6 +59,7 @@ pub struct GridIntoIterator<T: Debug> {
     y: isize,
 }
 
+#[derive(Debug)]
 pub struct GridIteratorItem<T> {
     pub element: T,
     pub x: isize,
@@ -76,28 +83,29 @@ impl<T: Debug + Clone> Iterator for GridIntoIterator<T> {
     type Item = GridIteratorItem<T>;
     fn next(&mut self) -> Option<GridIteratorItem<T>> {
         let grid_size = self.grid.grid_size;
-        let dim_x = grid_size.0 as isize;
-        let dim_y = grid_size.1 as isize;
-
-        if self.x == dim_x && self.y == dim_y {
-            return None;
-        }
-
-        if self.x < dim_x {
-            self.x += 1;
-        } else if self.x == dim_x && self.y < dim_y {
-            self.x = 0;
-            self.y += 1;
-        }
+        let max_x = grid_size.0 as isize - 1;
+        let max_y = grid_size.1 as isize - 1;
 
         let index = self.grid.coords_to_index(self.x, self.y);
-        self.grid.grid.get(index).map_or(None, |x| {
+        let cell = self.grid.grid.get(index).map_or(None, |x| {
             Some(GridIteratorItem {
                 x: self.x,
                 y: self.y,
                 element: x.clone(),
             })
-        })
+        });
+
+        self.x += 1;
+
+        if self.x > max_x {
+            self.x = 0;
+            self.y += 1;
+            if self.y > max_y {
+                return None;
+            }
+        }
+
+        cell
     }
 }
 
@@ -120,7 +128,6 @@ impl<T: Debug + Clone> Grid<T> {
             None => Err(()),
         }
     }
-
 
     pub fn iter(&self) -> GridIntoIterator<T> {
         GridIntoIterator {
