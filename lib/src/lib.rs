@@ -107,11 +107,26 @@ impl<T: Debug + Clone> Iterator for GridIntoIterator<T> {
 
 impl<T: Debug + Clone> Grid<T> {
     pub fn get(&self, x: isize, y: isize) -> Option<&T> {
+        if !self.check_bounds(x, y) {
+            return None;
+        }
         let index = self.coords_to_index(x, y) as usize;
         self.grid.get(index)
     }
 
+    fn check_bounds(&self, x: isize, y: isize) -> bool {
+        let (width, height) = self.grid_size;
+        if self.offset == 0 {
+            x < width as isize && y < height as isize && x >= 0 && y >= 0
+        } else {
+            true
+        }
+    }
+
     pub fn set(&mut self, x: isize, y: isize, item: T) -> Result<(), ()> {
+        if !self.check_bounds(x, y) {
+            return Err(());
+        }
         let index = self.coords_to_index(x, y) as usize;
         match self.grid.get_mut(index) {
             Some(old_item) => {
