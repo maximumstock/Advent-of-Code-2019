@@ -82,9 +82,13 @@ impl<T: Debug + Clone> IntoIterator for Grid<T> {
 impl<T: Debug + Clone> Iterator for GridIntoIterator<T> {
     type Item = GridIteratorItem<T>;
     fn next(&mut self) -> Option<GridIteratorItem<T>> {
-        let grid_size = self.grid.grid_size;
-        let max_x = grid_size.0 as isize - 1;
-        let max_y = grid_size.1 as isize - 1;
+        if self.x == self.grid.grid_size.0 as isize {
+            self.x = 0;
+            self.y += 1;
+            if self.y == self.grid.grid_size.1 as isize {
+                return None;
+            }
+        }
 
         let index = self.grid.coords_to_index(self.x, self.y);
         let cell = self.grid.grid.get(index).map_or(None, |x| {
@@ -97,25 +101,14 @@ impl<T: Debug + Clone> Iterator for GridIntoIterator<T> {
 
         self.x += 1;
 
-        if self.x > max_x {
-            self.x = 0;
-            self.y += 1;
-            if self.y > max_y {
-                return None;
-            }
-        }
-
         cell
     }
 }
 
 impl<T: Debug + Clone> Grid<T> {
-    pub fn get(&self, x: isize, y: isize) -> Result<&T, ()> {
+    pub fn get(&self, x: isize, y: isize) -> Option<&T> {
         let index = self.coords_to_index(x, y) as usize;
-        match self.grid.get(index) {
-            Some(item) => Ok(item),
-            None => Err(()),
-        }
+        self.grid.get(index)
     }
 
     pub fn set(&mut self, x: isize, y: isize, item: T) -> Result<(), ()> {
@@ -165,5 +158,12 @@ mod tests {
 
         grid.set(-2, -2, true).unwrap();
         assert_eq!(&true, grid.get(-2, -2).unwrap());
+    }
+
+    #[test]
+    fn test_iterator_length() {
+        let grid: Grid<bool> = Grid::new(5, 5, 0, 0);
+        assert_eq!(grid.iter().map(|_| 1).count(), 25);
+        assert_eq!(grid.into_iter().count(), 25);
     }
 }
